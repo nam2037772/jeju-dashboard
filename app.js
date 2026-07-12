@@ -25,22 +25,23 @@ const DEFAULT_STATE = {
     { id: "s3", label: "전기 가설분전반 누전차단기 점검", checked: false },
     { id: "s4", label: "화기작업 소화기 비치", checked: false },
   ],
+  workDate: todayStr(),
   personnel: [
-    { trade: "골조", count: 12 },
-    { trade: "전기", count: 6 },
-    { trade: "정보통신", count: 4 },
-    { trade: "설비", count: 5 },
+    { trade: "골조", prev: 120, today: 12 },
+    { trade: "전기", prev: 64, today: 6 },
+    { trade: "정보통신", prev: 28, today: 4 },
+    { trade: "설비", prev: 40, today: 5 },
   ],
   equipment: [
-    { name: "타워크레인", owned: 1, active: 1 },
-    { name: "굴착기", owned: 2, active: 1 },
-    { name: "고소작업차", owned: 1, active: 1 },
+    { name: "타워크레인", spec: "8T", prev: 20, today: 1 },
+    { name: "굴착기", spec: "06W", prev: 15, today: 2 },
+    { name: "고소작업차", spec: "14m", prev: 9, today: 1 },
   ],
   materials: [
-    { name: "철근 SD400", qty: "24 t", status: "ok" },
-    { name: "레미콘 25-24-15", qty: "예약", status: "warn" },
-    { name: "전선관 CD16", qty: "80 본", status: "ok" },
-    { name: "정보통신 UTP Cat6", qty: "3 롤", status: "low" },
+    { name: "철근", spec: "SD400 D16", unit: "ton", prev: 210, today: 24 },
+    { name: "레미콘", spec: "25-24-15", unit: "㎥", prev: 180, today: 0 },
+    { name: "전선관", spec: "CD16", unit: "본", prev: 640, today: 80 },
+    { name: "UTP 케이블", spec: "Cat6", unit: "롤", prev: 12, today: 3 },
   ],
   deadlines: [
     { title: "2층 슬래브 배근 검측", org: "감리단", manager: "김감리", due: "2026-07-15" },
@@ -77,6 +78,7 @@ let editing = false;             // 편집 모드 여부
 let isAuthed = false;            // 시공사 로그인 여부
 let notifOpen = false;
 let loginModal = false;
+let rolledOver = false;          // 편집 시작 시 전일 이월이 일어났는지
 
 const $app = document.getElementById("app");
 
@@ -93,8 +95,7 @@ function boot() {
     render();
   });
   onSnapshot(DOC, (snap) => {
-    if (snap.exists()) liveState = { ...DEFAULT_STATE, ...snap.data() };
-    else liveState = DEFAULT_STATE;
+    liveState = normalizeRows(snap.exists() ? { ...DEFAULT_STATE, ...snap.data() } : { ...DEFAULT_STATE });
     if (!editing) render();
   }, (err) => {
     console.error(err);
@@ -109,6 +110,57 @@ function esc(s) {
 }
 function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
 function uid() { return "x" + Math.random().toString(36).slice(2, 8); }
+
+// 오늘 날짜 "YYYY-MM-DD"
+function todayStr() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+function fmtDate(s) {
+  if (!s) return "-";
+  const d = new Date(s + "T00:00:00");
+  if (isNaN(d)) return s;
+  return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()} (${WEEK[d.getDay()]})`;
+}
+// 누계 = 전일 + 금일
+function rowTotal(r) { return (+r.prev || 0) + (+r.today || 0); }
+
+// 예전(단일 count/qty) 구조 → 신(전일/금일) 구조로 변환. workDate 보정.
+function normalizeRows(state) {
+  state.personnel = (state.personnel || []).map((r) =>
+    ("prev" in r || "today" in r)
+      ? { trade: r.trade || "", prev: +r.prev || 0, today: +r.today || 0 }
+      : { trade: r.trade || "", prev: 0, today: +r.count || 0 });
+  state.equipment = (state.equipment || []).map((r) =>
+    ("prev" in r || "today" in r)
+      ? { name: r.name || "", spec: r.spec || "", prev: +r.prev || 0, today: +r.today || 0 }
+      : { name: r.name || "", spec: "", prev: 0, today: +r.active || 0 });
+  state.materials = (state.materials || []).map((r) =>
+    ("prev" in r || "today" in r)
+      ? { name: r.name || "", spec: r.spec || "", unit: r.unit || "", prev: +r.prev || 0, today: +r.today || 0 }
+      : { name: r.name || "", spec: r.qty || "", unit: "", prev: 0, today: 0 });
+  if (!state.workDate) state.workDate = todayStr();
+  return state;
+}
+
+// 행 위/아래 이동 (path 예: "personnel.2")
+function moveRow(obj, path, dir) {
+  const parts = path.split(".");
+  const idx = +parts[parts.length - 1];
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) cur = cur[parts[i]];
+  const j = idx + dir;
+  if (j < 0 || j >= cur.length) return;
+  [cur[idx], cur[j]] = [cur[j], cur[idx]];
+}
+function moveBtns(key, i, len) {
+  return `<span class="mv">
+    <button class="icon-btn sm" data-move="${key}.${i}" data-dir="-1" ${i === 0 ? "disabled" : ""}>▲</button>
+    <button class="icon-btn sm" data-move="${key}.${i}" data-dir="1" ${i === len - 1 ? "disabled" : ""}>▼</button>
+  </span>`;
+}
 
 function ddayInfo(due) {
   if (!due) return { label: "-", cls: "" };
@@ -156,20 +208,20 @@ function render() {
     </header>
 
     <div class="wrap">
-      ${editing ? `<div style="margin-top:16px" class="editing-note">✏️ 편집 모드 — 수정 후 <b>저장</b>을 눌러야 모두에게 반영됩니다.</div>` : ""}
+      ${editing ? `<div style="margin-top:16px" class="editing-note">✏️ 편집 모드 — 수정 후 <b>저장</b>을 눌러야 모두에게 반영됩니다.${rolledOver ? ` <span style="color:var(--blue)">· 날짜가 바뀌어 어제 '금일'을 '전일 누계'로 자동 이월했습니다.</span>` : ""}</div>` : ""}
       <div class="grid">
 
-        ${card("col-4", "var(--blue)", "오늘의 작업", `${doneTasks}/${s.tasks.length} 완료`, tasksBody(s))}
+        ${card("col-4", "var(--blue)", "오늘의 작업", fmtDate(s.workDate), tasksBody(s))}
 
         ${card("col-4", "var(--orange)", "안전 점검", `${doneSafety}/${s.safety.length} 확인`, safetyBody(s))}
 
         ${card("col-4", "var(--red)", "검측·공문 마감", `${s.deadlines.length}건`, deadlinesBody(s))}
 
-        ${card("col-3", "var(--purple)", "인력 현황", `${s.personnel.reduce((a, b) => a + (+b.count || 0), 0)}명`, personnelBody(s))}
+        ${card("col-6", "var(--purple)", "인력 현황", `누계 ${s.personnel.reduce((a, b) => a + rowTotal(b), 0)}명`, personnelBody(s))}
 
-        ${card("col-3", "var(--purple)", "장비 현황", `가동 ${s.equipment.reduce((a, b) => a + (+b.active || 0), 0)}대`, equipmentBody(s))}
+        ${card("col-6", "var(--purple)", "장비 현황", `${s.equipment.length}종`, equipmentBody(s))}
 
-        ${card("col-6", "var(--green)", "주요 자재", `${s.materials.length}품목`, materialsBody(s))}
+        ${card("col-12", "var(--green)", "주요 자재", `${s.materials.length}품목`, materialsBody(s))}
 
         ${card("col-12", "var(--blue-lt)", "현장 사진", `${s.photos.length}건`, photosBody(s))}
 
@@ -221,8 +273,13 @@ function card(col, accent, title, count, body) {
 // -------- 작업 --------
 function tasksBody(s) {
   if (editing) {
-    return s.tasks.map((t, i) => `
+    return `<div class="edit-row" style="border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--text-sub);white-space:nowrap">작업일자</span>
+        <input class="inp" type="date" value="${esc(s.workDate)}" data-set="workDate">
+      </div>`
+      + s.tasks.map((t, i) => `
       <div class="edit-row">
+        ${moveBtns("tasks", i, s.tasks.length)}
         <input class="inp" value="${esc(t.title)}" data-set="tasks.${i}.title">
         <input class="inp inp-sm" value="${esc(t.trade)}" data-set="tasks.${i}.trade" placeholder="공종">
         <button class="icon-btn" data-del="tasks.${i}">×</button>
@@ -279,63 +336,67 @@ function deadlinesBody(s) {
   }).join("") || emptyRow();
 }
 
-// -------- 인력 --------
+// -------- 인력 (공종 / 전일·금일·누계) --------
 function personnelBody(s) {
   if (editing) {
     return s.personnel.map((t, i) => `
       <div class="edit-row">
-        <input class="inp" value="${esc(t.trade)}" data-set="personnel.${i}.trade">
-        <input class="inp inp-sm" type="number" value="${esc(t.count)}" data-set="personnel.${i}.count" data-num="1">
+        ${moveBtns("personnel", i, s.personnel.length)}
+        <input class="inp" style="flex:1;min-width:70px" value="${esc(t.trade)}" data-set="personnel.${i}.trade" placeholder="공종">
+        <input class="inp num" type="number" value="${esc(t.prev)}" data-set="personnel.${i}.prev" data-num="1" data-row="personnel.${i}" placeholder="전일">
+        <input class="inp num" type="number" value="${esc(t.today)}" data-set="personnel.${i}.today" data-num="1" data-row="personnel.${i}" placeholder="금일">
+        <span class="tot" data-total="personnel.${i}">누계 ${rowTotal(t)}</span>
         <button class="icon-btn" data-del="personnel.${i}">×</button>
       </div>`).join("")
       + `<button class="add-btn" data-add="personnel">+ 공종 추가</button>`;
   }
-  return `<div class="rows">` + s.personnel.map((t) => `
-    <div class="row"><span class="name">${esc(t.trade)}</span><span class="val">${esc(t.count)}명</span></div>`
-  ).join("") + `</div>`;
+  return `<div class="dt dt-p">
+    <div class="dt-head"><span>공종</span><span>전일</span><span>금일</span><span>누계</span></div>
+    ${s.personnel.map((t) => `<div class="dt-row"><span class="nm">${esc(t.trade)}</span><span>${esc(t.prev)}</span><span class="td">${esc(t.today)}</span><span class="tt">${rowTotal(t)}</span></div>`).join("") || emptyRow()}
+  </div>`;
 }
 
-// -------- 장비 --------
+// -------- 장비 (장비명·규격 / 전일·금일·누계) --------
 function equipmentBody(s) {
   if (editing) {
     return s.equipment.map((t, i) => `
       <div class="edit-row">
-        <input class="inp" value="${esc(t.name)}" data-set="equipment.${i}.name">
-        <input class="inp inp-sm" type="number" value="${esc(t.active)}" data-set="equipment.${i}.active" data-num="1" title="가동">
-        <span style="color:var(--text-mute)">/</span>
-        <input class="inp inp-sm" type="number" value="${esc(t.owned)}" data-set="equipment.${i}.owned" data-num="1" title="보유">
+        ${moveBtns("equipment", i, s.equipment.length)}
+        <input class="inp" style="flex:1;min-width:70px" value="${esc(t.name)}" data-set="equipment.${i}.name" placeholder="장비명">
+        <input class="inp" style="width:84px" value="${esc(t.spec)}" data-set="equipment.${i}.spec" placeholder="규격">
+        <input class="inp num" type="number" value="${esc(t.prev)}" data-set="equipment.${i}.prev" data-num="1" data-row="equipment.${i}" placeholder="전일">
+        <input class="inp num" type="number" value="${esc(t.today)}" data-set="equipment.${i}.today" data-num="1" data-row="equipment.${i}" placeholder="금일">
+        <span class="tot" data-total="equipment.${i}">누계 ${rowTotal(t)}</span>
         <button class="icon-btn" data-del="equipment.${i}">×</button>
       </div>`).join("")
       + `<button class="add-btn" data-add="equipment">+ 장비 추가</button>`;
   }
-  return `<div class="rows">` + s.equipment.map((t) => `
-    <div class="row"><span class="name">${esc(t.name)}</span><span class="val">${esc(t.active)} / ${esc(t.owned)}대</span></div>`
-  ).join("") + `</div>`;
+  return `<div class="dt dt-e">
+    <div class="dt-head"><span>장비명</span><span>규격</span><span>전일</span><span>금일</span><span>누계</span></div>
+    ${s.equipment.map((t) => `<div class="dt-row"><span class="nm">${esc(t.name)}</span><span class="spec">${esc(t.spec)}</span><span>${esc(t.prev)}</span><span class="td">${esc(t.today)}</span><span class="tt">${rowTotal(t)}</span></div>`).join("") || emptyRow()}
+  </div>`;
 }
 
-// -------- 자재 --------
-const STATUS_LABEL = { ok: "충분", warn: "주의", low: "부족" };
+// -------- 자재 (자재명·규격·단위 / 전일·금일·누계) --------
 function materialsBody(s) {
   if (editing) {
     return s.materials.map((t, i) => `
       <div class="edit-row">
-        <input class="inp" value="${esc(t.name)}" data-set="materials.${i}.name">
-        <input class="inp inp-sm" style="width:90px" value="${esc(t.qty)}" data-set="materials.${i}.qty" placeholder="수량">
-        <select class="inp" style="width:90px" data-set="materials.${i}.status">
-          ${["ok", "warn", "low"].map(v => `<option value="${v}" ${t.status === v ? "selected" : ""}>${STATUS_LABEL[v]}</option>`).join("")}
-        </select>
+        ${moveBtns("materials", i, s.materials.length)}
+        <input class="inp" style="flex:1;min-width:80px" value="${esc(t.name)}" data-set="materials.${i}.name" placeholder="자재명">
+        <input class="inp" style="width:96px" value="${esc(t.spec)}" data-set="materials.${i}.spec" placeholder="규격">
+        <input class="inp" style="width:56px" value="${esc(t.unit)}" data-set="materials.${i}.unit" placeholder="단위">
+        <input class="inp num" type="number" value="${esc(t.prev)}" data-set="materials.${i}.prev" data-num="1" data-row="materials.${i}" placeholder="전일">
+        <input class="inp num" type="number" value="${esc(t.today)}" data-set="materials.${i}.today" data-num="1" data-row="materials.${i}" placeholder="금일">
+        <span class="tot" data-total="materials.${i}">누계 ${rowTotal(t)}</span>
         <button class="icon-btn" data-del="materials.${i}">×</button>
       </div>`).join("")
       + `<button class="add-btn" data-add="materials">+ 자재 추가</button>`;
   }
-  return `<div class="rows">` + s.materials.map((t) => `
-    <div class="row">
-      <span class="name">${esc(t.name)}</span>
-      <span style="display:flex;gap:10px;align-items:center">
-        <span class="val">${esc(t.qty)}</span>
-        <span class="pill ${t.status}">${STATUS_LABEL[t.status] || ""}</span>
-      </span>
-    </div>`).join("") + `</div>`;
+  return `<div class="dt dt-m">
+    <div class="dt-head"><span>자재명</span><span>규격</span><span>단위</span><span>전일</span><span>금일</span><span>누계</span></div>
+    ${s.materials.map((t) => `<div class="dt-row"><span class="nm">${esc(t.name)}</span><span class="spec">${esc(t.spec)}</span><span class="spec">${esc(t.unit)}</span><span>${esc(t.prev)}</span><span class="td">${esc(t.today)}</span><span class="tt">${rowTotal(t)}</span></div>`).join("") || emptyRow()}
+  </div>`;
 }
 
 // -------- 사진 --------
@@ -454,6 +515,14 @@ function bindEvents() {
         const fill = document.querySelector(".progress-fill");
         if (fill) fill.style.width = Math.round(v * 100) + "%";
       }
+      // 전일/금일 입력 시 해당 행의 누계를 즉시 갱신 (재렌더 없이 포커스 유지)
+      const rowPath = el.getAttribute("data-row");
+      if (rowPath) {
+        const parts = rowPath.split(".");
+        const r = draft[parts[0]][+parts[1]];
+        const totEl = document.querySelector(`[data-total="${rowPath}"]`);
+        if (totEl) totEl.textContent = "누계 " + rowTotal(r);
+      }
     };
   });
 
@@ -463,11 +532,26 @@ function bindEvents() {
   document.querySelectorAll("[data-add]").forEach(el => {
     el.onclick = () => { addTo(draft, el.getAttribute("data-add")); render(); };
   });
+  document.querySelectorAll("[data-move]").forEach(el => {
+    el.onclick = () => { moveRow(draft, el.getAttribute("data-move"), +el.getAttribute("data-dir")); render(); };
+  });
 }
 
 function startEdit() {
   editing = true;
   draft = deepCopy(liveState);
+  rolledOver = false;
+  const t = todayStr();
+  if (draft.workDate && draft.workDate < t) {
+    // 날짜가 바뀜: 어제 '금일'을 '전일 누계'로 이월하고 금일 0으로 초기화
+    ["personnel", "equipment", "materials"].forEach((k) => {
+      (draft[k] || []).forEach((r) => { r.prev = (+r.prev || 0) + (+r.today || 0); r.today = 0; });
+    });
+    draft.workDate = t;
+    rolledOver = true;
+  } else if (!draft.workDate) {
+    draft.workDate = t;
+  }
   notifOpen = false;
   render();
 }
@@ -519,9 +603,9 @@ function removeAt(obj, path) {
 const NEW_ROW = {
   tasks: () => ({ id: uid(), title: "", trade: "", done: false }),
   safety: () => ({ id: uid(), label: "", checked: false }),
-  personnel: () => ({ trade: "", count: 0 }),
-  equipment: () => ({ name: "", owned: 0, active: 0 }),
-  materials: () => ({ name: "", qty: "", status: "ok" }),
+  personnel: () => ({ trade: "", prev: 0, today: 0 }),
+  equipment: () => ({ name: "", spec: "", prev: 0, today: 0 }),
+  materials: () => ({ name: "", spec: "", unit: "", prev: 0, today: 0 }),
   deadlines: () => ({ title: "", org: "", manager: "", due: "" }),
   photos: () => ({ caption: "", date: "", tag: "", grad: "linear-gradient(135deg,#1C93BE,#57C7E8)" }),
 };

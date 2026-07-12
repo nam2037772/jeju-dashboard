@@ -166,6 +166,27 @@ body {
 .photo-cap .c-title { font-size: 13px; font-weight: 600; }
 .photo-cap .c-sub { font-size: 11px; color: var(--text-mute); margin-top: 2px; }
 
+/* ===== 전일/금일/누계 테이블 ===== */
+.dt { width: 100%; }
+.dt-head { display: grid; gap: 6px; padding: 6px 2px 8px; font-size: 11px; color: var(--text-mute); font-weight: 700; border-bottom: 1px solid var(--border); }
+.dt-row { display: grid; gap: 6px; padding: 9px 2px; font-size: 14px; border-bottom: 1px solid #F0F2F4; align-items: center; }
+.dt-row:last-child { border-bottom: 0; }
+.dt-head span:not(:first-child), .dt-row span:not(:first-child) { text-align: right; }
+.dt-row .nm { font-weight: 500; }
+.dt-row .spec { color: var(--text-sub); font-size: 12px; }
+.dt-row .td { color: var(--blue); font-weight: 700; }
+.dt-row .tt { color: var(--purple); font-weight: 800; }
+.dt-p .dt-head, .dt-p .dt-row { grid-template-columns: 1fr 46px 46px 56px; }
+.dt-e .dt-head, .dt-e .dt-row { grid-template-columns: 1.3fr 70px 44px 44px 52px; }
+.dt-m .dt-head, .dt-m .dt-row { grid-template-columns: 1.4fr 82px 46px 44px 44px 52px; }
+
+/* 편집 행: 숫자칸/누계/이동 버튼 */
+.inp.num { width: 54px; text-align: right; flex: 0 0 auto; }
+.tot { font-size: 12px; font-weight: 800; color: var(--purple); white-space: nowrap; flex: 0 0 auto; }
+.mv { display: inline-flex; flex-direction: column; gap: 2px; flex: 0 0 auto; }
+.icon-btn.sm { width: 22px; height: 15px; font-size: 9px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.icon-btn:disabled { opacity: 0.3; cursor: default; }
+
 /* ===== 편집 인풋 ===== */
 .inp {
   font: inherit; font-size: 13px; color: var(--text);
@@ -173,7 +194,7 @@ body {
 }
 .inp:focus { outline: none; border-color: var(--blue); }
 .inp-sm { width: 70px; }
-.edit-row { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #F0F2F4; }
+.edit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid #F0F2F4; }
 .edit-row:last-child { border-bottom: 0; }
 .icon-btn { border: 0; background: #F0F2F4; color: var(--text-sub); width: 26px; height: 26px; border-radius: 7px; cursor: pointer; font-size: 15px; line-height: 1; flex-shrink: 0; }
 .icon-btn:hover { background: #E4E7EA; }
