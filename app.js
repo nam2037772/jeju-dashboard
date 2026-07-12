@@ -7,6 +7,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { firebaseConfig, EDIT_EMAIL, DOC_PATH } from "./firebase-config.js";
 
+// 시간대 기준(KST). DEFAULT_STATE가 todayStr()를 호출하므로 반드시 그 앞에서 선언한다(TDZ 방지).
+const KST = "Asia/Seoul";
+
 // ===================== 기본 데이터 (Firestore 문서가 없을 때 표시/초기값) =====================
 const DEFAULT_STATE = {
   siteName: "한국정보통신공사협회 제주지회 신축공사",
@@ -107,7 +110,6 @@ function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
 function uid() { return "x" + Math.random().toString(36).slice(2, 8); }
 
 // KST(Asia/Seoul) 기준 오늘 날짜 "YYYY-MM-DD"
-const KST = "Asia/Seoul";
 function todayStr() {
   // en-CA 로케일은 항상 YYYY-MM-DD 형식으로 출력
   return new Intl.DateTimeFormat("en-CA", {
