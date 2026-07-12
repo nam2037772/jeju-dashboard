@@ -179,8 +179,6 @@ function data() { return editing ? draft : liveState; }
 // ===================== 렌더 =====================
 function render() {
   const s = data();
-  const doneTasks = s.tasks.filter(t => t.done).length;
-  const doneSafety = s.safety.filter(t => t.checked).length;
 
   $app.innerHTML = `
     <header class="header">
@@ -214,7 +212,7 @@ function render() {
 
         ${card("col-4", "var(--blue)", "오늘의 작업", fmtDate(s.workDate), tasksBody(s))}
 
-        ${card("col-4", "var(--orange)", "안전 점검", `${doneSafety}/${s.safety.length} 확인`, safetyBody(s))}
+        ${card("col-4", "var(--orange)", "안전 점검", `${s.safety.length}건`, safetyBody(s))}
 
         ${card("col-4", "var(--red)", "검측·공문 마감", `${s.deadlines.length}건`, deadlinesBody(s))}
 
@@ -298,9 +296,8 @@ function tasksBody(s) {
       </div>`).join("")
       + `<button class="add-btn" data-add="tasks">+ 작업 추가</button>`;
   }
-  return s.tasks.map((t, i) => `
-    <div class="task ${t.done ? "done" : ""}">
-      <input type="checkbox" ${t.done ? "checked" : ""} data-toggle="tasks.${i}.done" ${isAuthed ? "" : "disabled"}>
+  return s.tasks.map((t) => `
+    <div class="task">
       <div class="task-body"><div class="task-title">${esc(t.title)}</div></div>
       <span class="tag">${esc(t.trade)}</span>
     </div>`).join("") || emptyRow();
@@ -316,9 +313,8 @@ function safetyBody(s) {
       </div>`).join("")
       + `<button class="add-btn" data-add="safety">+ 점검항목 추가</button>`;
   }
-  return s.safety.map((t, i) => `
-    <div class="safety ${t.checked ? "checked" : ""}">
-      <input type="checkbox" ${t.checked ? "checked" : ""} data-toggle="safety.${i}.checked" ${isAuthed ? "" : "disabled"}>
+  return s.safety.map((t) => `
+    <div class="safety">
       <div class="safety-label">${esc(t.label)}</div>
     </div>`).join("") || emptyRow();
 }
@@ -523,17 +519,6 @@ function bindEvents() {
   if (pw) { pw.focus(); pw.onkeydown = (e) => { if (e.key === "Enter") tryLogin(); }; }
   const closeLogin = document.getElementById("closeLogin");
   if (closeLogin) closeLogin.onclick = () => { loginModal = false; render(); };
-
-  // 열람 모드에서 시공사가 체크박스 토글 → 즉시 저장
-  document.querySelectorAll("[data-toggle]").forEach(el => {
-    el.onchange = () => {
-      if (!isAuthed) return;
-      const path = el.getAttribute("data-toggle");
-      const next = deepCopy(liveState);
-      setPath(next, path, el.checked);
-      persist(next);
-    };
-  });
 
   // 편집 인풋
   document.querySelectorAll("[data-set]").forEach(el => {
