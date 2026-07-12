@@ -5,9 +5,6 @@ import {
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import {
-  getStorage, ref as storageRef, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { firebaseConfig, EDIT_EMAIL, DOC_PATH } from "./firebase-config.js";
 
 // ===================== 기본 데이터 (Firestore 문서가 없을 때 표시/초기값) =====================
@@ -53,24 +50,17 @@ const DEFAULT_STATE = {
     { title: "전기 착공 전 안전점검 공문", org: "감독관청", manager: "박감독", due: "2026-07-18" },
     { title: "정보통신 준공도서 제출", org: "협회", manager: "이통신", due: "2026-07-25" },
   ],
-  photos: [
-    { caption: "2층 슬래브 배근 현황", date: "2026-07-11", tag: "골조", grad: "linear-gradient(135deg,#1C93BE,#57C7E8)" },
-    { caption: "지하 전기 배관 매립", date: "2026-07-10", tag: "전기", grad: "linear-gradient(135deg,#6C4FA3,#9B7FD1)" },
-    { caption: "외부 비계 설치", date: "2026-07-09", tag: "안전", grad: "linear-gradient(135deg,#C05A2C,#E0895C)" },
-    { caption: "자재 반입 검수", date: "2026-07-08", tag: "자재", grad: "linear-gradient(135deg,#4C7A34,#7CA860)" },
-  ],
   historyDates: [],   // 저장된 일자별 이력 목록 "YYYY-MM-DD"
   updatedAt: null,
 };
 
 // ===================== Firebase 초기화 =====================
 const configured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
-let db, auth, storage, DOC;
+let db, auth, DOC;
 if (configured) {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   auth = getAuth(app);
-  storage = getStorage(app);
   DOC = doc(db, DOC_PATH[0], DOC_PATH[1]);
 }
 
@@ -236,8 +226,6 @@ function render() {
         ${card("col-6", "var(--green)", "주요 자재", `${s.materials.length}품목`, materialsBody(s))}
 
         ${card("col-6", "var(--orange)", "명일작업 · 특기사항", "", notesBody(s))}
-
-        ${card("col-12", "var(--blue-lt)", "현장 사진", `${s.photos.length}건`, photosBody(s))}
 
       </div>
       <div class="footer">
@@ -452,34 +440,6 @@ function notesSection(label, key, value, placeholder, emptyText) {
   return `<div class="notes-block"><div class="notes-subhead">${label}</div>${body}</div>`;
 }
 
-// -------- 사진 --------
-function photosBody(s) {
-  if (editing) {
-    return editHead(["사진", "내용", "촬영일", "태그"], "edit-head-photos") + s.photos.map((t, i) => `
-      <div class="edit-row photo-edit-row">
-        <div class="photo-edit-preview" style="background:${t.img ? `url('${esc(t.img)}') center/cover` : (esc(t.grad) || "linear-gradient(135deg,#1C93BE,#57C7E8)")}"></div>
-        <label class="photo-upload-btn">
-          <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-photo-file="${i}">
-          ${t.img ? "사진 변경" : "사진 첨부"}
-        </label>
-        <span class="photo-upload-status" data-photo-status="${i}">${t.img ? "첨부됨" : "사진을 선택하세요"}</span>
-        <input class="inp" style="flex:1 1 100%" value="${esc(t.caption)}" data-set="photos.${i}.caption" placeholder="사진 내용">
-        <input class="inp" type="date" value="${esc(t.date)}" data-set="photos.${i}.date">
-        <input class="inp inp-sm" style="width:90px" value="${esc(t.tag)}" data-set="photos.${i}.tag" placeholder="태그">
-        <button class="icon-btn" data-del="photos.${i}">×</button>
-      </div>`).join("")
-      + `<button class="add-btn" data-add="photos">+ 사진 추가</button>`;
-  }
-  return `<div class="photos">` + s.photos.map((t) => `
-    <div class="photo">
-      <div class="photo-img" style="background:${t.img ? `url('${esc(t.img)}')` : (esc(t.grad) || "linear-gradient(135deg,#1C93BE,#57C7E8)")};background-size:cover;background-position:center"></div>
-      <div class="photo-cap">
-        <div class="c-title">${esc(t.caption)}</div>
-        <div class="c-sub">${esc(t.date)} · ${esc(t.tag)}</div>
-      </div>
-    </div>`).join("") + `</div>`;
-}
-
 function emptyRow() { return `<div style="padding:14px 0;color:var(--text-mute);font-size:13px">항목이 없습니다.</div>`; }
 
 // -------- 편집 가능한 헤더 텍스트 --------
@@ -575,10 +535,6 @@ function bindEvents() {
     el.onblur = () => { el.value = formatNumber(el.value.replace(/,/g, "")); };
   });
 
-  document.querySelectorAll("[data-photo-file]").forEach(el => {
-    el.onchange = () => uploadPhoto(el);
-  });
-
   document.querySelectorAll("[data-del]").forEach(el => {
     el.onclick = () => { removeAt(draft, el.getAttribute("data-del")); render(); };
   });
@@ -589,81 +545,6 @@ function bindEvents() {
     el.onclick = () => { moveRow(draft, el.getAttribute("data-move"), +el.getAttribute("data-dir")); render(); };
   });
 }
-
-async function uploadPhoto(input) {
-  const file = input.files && input.files[0];
-  if (!file) return;
-  const index = +input.getAttribute("data-photo-file");
-  const status = document.querySelector(`[data-photo-status="${index}"]`);
-  const maxSize = 15 * 1024 * 1024;
-  if (file.size > maxSize) {
-    alert("사진은 한 장당 15MB 이하만 첨부할 수 있습니다.");
-    input.value = "";
-    return;
-  }
-  if (status) status.textContent = "사진 압축 중…";
-  input.disabled = true;
-  try {
-    const photoBlob = await optimizePhoto(file);
-    if (!editing || !draft.photos[index]) return;
-    if (status) status.textContent = "업로드 중…";
-    // Firebase Storage에 파일로 업로드하고 다운로드 URL만 문서에 저장
-    const path = `photos/${todayStr()}/${Date.now()}-${uid()}.jpg`;
-    const fileRef = storageRef(storage, path);
-    await uploadBytes(fileRef, photoBlob, { contentType: "image/jpeg" });
-    const url = await getDownloadURL(fileRef);
-    if (!editing || !draft.photos[index]) return;
-    draft.photos[index].img = url;
-    if (!draft.photos[index].date) draft.photos[index].date = todayStr();
-    render();
-  } catch (e) {
-    console.error(e);
-    if (status) status.textContent = "업로드 실패";
-    input.disabled = false;
-    const msg = (e && e.code === "storage/unauthorized")
-      ? "업로드 권한이 없습니다. Firebase Storage 규칙과 로그인 상태를 확인하세요(README 참고)."
-      : (e && e.code === "storage/unknown")
-        ? "Storage가 아직 설정되지 않았습니다. Firebase 콘솔에서 Storage를 시작하세요(README 참고)."
-        : e.message;
-    alert("사진 첨부에 실패했습니다: " + msg);
-  }
-}
-
-async function optimizePhoto(file) {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const maxSide = 1600;
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    let width = Math.max(1, Math.round(bitmap.width * scale));
-    let height = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    let blob;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(bitmap, 0, 0, width, height);
-      const quality = Math.max(0.5, 0.82 - attempt * 0.07);
-      blob = await canvasToBlob(canvas, quality);
-      if (blob.size <= 500 * 1024) break;
-      width = Math.max(480, Math.round(width * 0.82));
-      height = Math.max(360, Math.round(height * 0.82));
-    }
-    bitmap.close();
-    return blob;
-  } catch (e) {
-    console.error(e);
-    throw new Error("이 사진 형식을 읽을 수 없습니다. JPG 또는 PNG 사진으로 다시 선택하세요.");
-  }
-}
-
-function canvasToBlob(canvas, quality) {
-  return new Promise((resolve, reject) =>
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("사진 압축 실패")), "image/jpeg", quality));
-}
-
 
 function startEdit() {
   editing = true;
@@ -728,6 +609,9 @@ async function saveDraft() {
 function tsMillis(ts) { return (ts && ts.toMillis) ? ts.toMillis() : null; }
 
 async function persist(obj) {
+  // 제거된 기능의 잔여 데이터 정리(옛 문서에 남아있을 수 있는 사진/알림)
+  delete obj.photos;
+  delete obj.notifications;
   // 이력 날짜 목록에 작업일자를 추가(중복 제거·정렬)
   const dates = new Set(obj.historyDates || []);
   if (obj.workDate) dates.add(obj.workDate);
@@ -782,7 +666,6 @@ const NEW_ROW = {
   equipment: () => ({ name: "", spec: "", prev: 0, today: 0 }),
   materials: () => ({ name: "", spec: "", unit: "", prev: 0, today: 0 }),
   deadlines: () => ({ title: "", org: "", manager: "", due: "" }),
-  photos: () => ({ caption: "", date: "", tag: "", grad: "linear-gradient(135deg,#1C93BE,#57C7E8)" }),
 };
 function addTo(obj, key) { obj[key].push(NEW_ROW[key]()); }
 
