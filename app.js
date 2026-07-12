@@ -13,6 +13,7 @@ const DEFAULT_STATE = {
   siteInfo: "제주특별자치도 · 현장현황판",
   weather: "맑음 24°C",
   progress: 0.42,
+  tomorrowWork: "",
   specialNotes: "",
   tasks: [
     { id: "t1", title: "2층 슬래브 배근 검측 준비", trade: "골조", done: false },
@@ -222,7 +223,7 @@ function render() {
 
         ${card("col-6", "var(--green)", "주요 자재", `${s.materials.length}품목`, materialsBody(s))}
 
-        ${card("col-6", "var(--orange)", "특기사항", s.specialNotes ? "작성됨" : "없음", specialNotesBody(s))}
+        ${card("col-6", "var(--orange)", "명일작업 · 특기사항", "", notesBody(s))}
 
         ${card("col-12", "var(--blue-lt)", "현장 사진", `${s.photos.length}건`, photosBody(s))}
 
@@ -412,13 +413,18 @@ function formatNumber(value) {
   return Number.isFinite(number) ? number.toLocaleString("ko-KR", { maximumFractionDigits: 2 }) : "0";
 }
 
-function specialNotesBody(s) {
-  if (editing) {
-    return `<textarea class="inp notes-input" data-set="specialNotes" placeholder="현장 특기사항을 입력하세요.">${esc(s.specialNotes)}</textarea>`;
-  }
-  return s.specialNotes
-    ? `<div class="notes-view">${esc(s.specialNotes)}</div>`
-    : `<div class="notes-empty">등록된 특기사항이 없습니다.</div>`;
+function notesBody(s) {
+  return notesSection("명일작업", "tomorrowWork", s.tomorrowWork, "명일(내일) 예정 작업을 입력하세요.", "등록된 명일작업이 없습니다.")
+    + notesSection("특기사항", "specialNotes", s.specialNotes, "현장 특기사항을 입력하세요.", "등록된 특기사항이 없습니다.");
+}
+
+function notesSection(label, key, value, placeholder, emptyText) {
+  const body = editing
+    ? `<textarea class="inp notes-input" data-set="${key}" placeholder="${esc(placeholder)}">${esc(value)}</textarea>`
+    : (value
+        ? `<div class="notes-view">${esc(value)}</div>`
+        : `<div class="notes-empty">${esc(emptyText)}</div>`);
+  return `<div class="notes-block"><div class="notes-subhead">${label}</div>${body}</div>`;
 }
 
 // -------- 사진 --------
