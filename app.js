@@ -6,7 +6,7 @@ import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
-  getStorage, ref as storageRef, uploadBytes, getDownloadURL
+  getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { firebaseConfig, EDIT_EMAIL, DOC_PATH } from "./firebase-config.js";
 
@@ -567,12 +567,25 @@ async function uploadPhoto(input) {
     input.value = "";
     return;
   }
-  if (status) status.textContent = "업로드 중…";
+  if (status) status.textContent = "사진 최적화 중…";
   input.disabled = true;
   try {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const uploadFile = await optimizePhoto(file);
+    const reduced = uploadFile.size < file.size;
+    if (status) status.textContent = reduced
+      ? `${formatBytes(file.size)} → ${formatBytes(uploadFile.size)} · 업로드 0%`
+      : `업로드 0% · ${formatBytes(uploadFile.size)}`;
+    const safeName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const target = storageRef(storage, `site-photos/${Date.now()}-${uid()}-${safeName}`);
-    const result = await uploadBytes(target, file, { contentType: file.type || "application/octet-stream" });
+    const task = uploadBytesResumable(target, uploadFile, { contentType: uploadFile.type || "application/octet-stream" });
+    const result = await new Promise((resolve, reject) => {
+      task.on("state_changed", (snapshot) => {
+        const pct = Math.round(snapshot.bytesTransferred / snapshot.totalBytes * 100);
+        if (status) status.textContent = reduced
+          ? `${formatBytes(file.size)} → ${formatBytes(uploadFile.size)} · 업로드 ${pct}%`
+          : `업로드 ${pct}% · ${formatBytes(uploadFile.size)}`;
+      }, reject, () => resolve(task.snapshot));
+    });
     const url = await getDownloadURL(result.ref);
     if (!editing || !draft.photos[index]) return;
     draft.photos[index].img = url;
@@ -584,6 +597,39 @@ async function uploadPhoto(input) {
     input.disabled = false;
     alert("사진 업로드에 실패했습니다: " + e.message + "\nFirebase Storage 규칙과 로그인 권한을 확인하세요.");
   }
+}
+
+async function optimizePhoto(file) {
+  const canCompress = /^image\/(jpeg|png|webp)$/i.test(file.type);
+  if (!canCompress || file.size < 900 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = 1920;
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    const blob = await new Promise((resolve, reject) =>
+      canvas.toBlob((value) => value ? resolve(value) : reject(new Error("사진 압축 실패")), "image/jpeg", 0.82));
+    if (blob.size >= file.size) return file;
+    const base = file.name.replace(/\.[^.]+$/, "");
+    return new File([blob], `${base}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+  } catch (e) {
+    console.warn("사진 최적화를 건너뜁니다.", e);
+    return file;
+  }
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
 function startEdit() {
