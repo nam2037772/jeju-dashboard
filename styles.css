@@ -202,6 +202,8 @@ body {
 .material-name { width: 130px; flex: 0 1 130px; min-width: 90px; }
 .material-spec { width: 130px; flex: 1 1 110px; min-width: 96px; }
 .material-unit { width: 66px; flex: 0 0 66px; }
+.p-name, .e-name { flex: 1; min-width: 70px; }   /* 인력 공종 / 장비명 */
+.e-spec { width: 84px; flex: 0 0 84px; }          /* 장비 규격 */
 .tot { font-size: 12px; font-weight: 800; color: var(--purple); white-space: nowrap; flex: 0 0 auto; }
 .mv { display: inline-flex; flex-direction: column; gap: 2px; flex: 0 0 auto; }
 .icon-btn.sm { width: 22px; height: 15px; font-size: 9px; padding: 0; display: flex; align-items: center; justify-content: center; }
@@ -258,3 +260,27 @@ body {
 .modal .err { color: var(--red); font-size: 12px; margin-bottom: 10px; min-height: 16px; }
 
 .config-warn { background: #FBEFE6; color: var(--orange); border: 1px solid #F0D6C4; padding: 14px 18px; border-radius: 12px; margin: 20px; font-size: 13px; line-height: 1.6; }
+
+/* ===== 모바일 편집: 인력·장비·자재 행을 열람 모드처럼 한 줄 표(그리드)로 =====
+   (기본 .edit-row 규칙보다 뒤에 있어야 display:grid 가 우선 적용됨) */
+@media (max-width: 480px) {
+  .edit-row-p, .edit-row-e, .edit-row-m {
+    display: grid; align-items: center; gap: 4px; flex-wrap: nowrap;
+  }
+  .edit-row-p { grid-template-columns: 22px minmax(38px,1fr) 40px 40px minmax(38px,auto) 22px; }
+  .edit-row-e { grid-template-columns: 22px minmax(44px,1.1fr) minmax(38px,0.9fr) 38px 38px minmax(38px,auto) 22px; }
+  .edit-row-m { grid-template-columns: 22px minmax(40px,1fr) minmax(38px,0.9fr) 30px 36px 36px minmax(36px,auto) 20px; gap: 3px; }
+  /* 그리드 칸에 맞춰 입력칸 폭 자동 + 축소 허용 (기본 폭/최소폭 무력화) */
+  .edit-row-p .inp, .edit-row-e .inp, .edit-row-m .inp {
+    width: auto; min-width: 0; padding: 6px 5px; font-size: 12px; text-align: left;
+  }
+  .edit-row-p .inp.num, .edit-row-e .inp.num, .edit-row-m .inp.num { width: auto; min-width: 0; text-align: right; }
+  .edit-row-p .tot, .edit-row-e .tot, .edit-row-m .tot { justify-self: end; font-size: 11px; }
+  .edit-row-p .icon-btn, .edit-row-e .icon-btn, .edit-row-m .icon-btn { width: 22px; height: 24px; }
+
+  /* 편집 헤더 라벨을 위 그리드의 내용 칸과 맞춤(양옆은 이동/삭제 버튼 자리) */
+  .edit-list-head { gap: 4px; }
+  .edit-head-personnel { grid-template-columns: minmax(38px,1fr) 40px 40px minmax(38px,auto); padding: 7px 26px 5px 26px; }
+  .edit-head-equipment { grid-template-columns: minmax(44px,1.1fr) minmax(38px,0.9fr) 38px 38px minmax(38px,auto); padding: 7px 26px 5px 26px; }
+  .edit-head-materials { grid-template-columns: minmax(40px,1fr) minmax(38px,0.9fr) 30px 36px 36px minmax(36px,auto); padding: 7px 24px 5px 26px; }
+}

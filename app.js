@@ -398,9 +398,9 @@ function deadlinesBody(s) {
 function personnelBody(s) {
   if (editing) {
     return editHead(["공종", "전일", "금일", "누계"], "edit-head-personnel") + s.personnel.map((t, i) => `
-      <div class="edit-row">
+      <div class="edit-row edit-row-p">
         ${moveBtns("personnel", i, s.personnel.length)}
-        <input class="inp" style="flex:1;min-width:70px" value="${esc(t.trade)}" data-set="personnel.${i}.trade" placeholder="공종">
+        <input class="inp p-name" value="${esc(t.trade)}" data-set="personnel.${i}.trade" placeholder="공종">
         <input class="inp num" type="number" value="${esc(t.prev)}" data-set="personnel.${i}.prev" data-num="1" data-row="personnel.${i}" placeholder="전일">
         <input class="inp num" type="number" value="${esc(t.today)}" data-set="personnel.${i}.today" data-num="1" data-row="personnel.${i}" placeholder="금일">
         <span class="tot" data-total="personnel.${i}">누계 ${rowTotal(t)}</span>
@@ -418,10 +418,10 @@ function personnelBody(s) {
 function equipmentBody(s) {
   if (editing) {
     return editHead(["장비명", "규격", "전일", "금일", "누계"], "edit-head-equipment") + s.equipment.map((t, i) => `
-      <div class="edit-row">
+      <div class="edit-row edit-row-e">
         ${moveBtns("equipment", i, s.equipment.length)}
-        <input class="inp" style="flex:1;min-width:70px" value="${esc(t.name)}" data-set="equipment.${i}.name" placeholder="장비명">
-        <input class="inp" style="width:84px" value="${esc(t.spec)}" data-set="equipment.${i}.spec" placeholder="규격">
+        <input class="inp e-name" value="${esc(t.name)}" data-set="equipment.${i}.name" placeholder="장비명">
+        <input class="inp e-spec" value="${esc(t.spec)}" data-set="equipment.${i}.spec" placeholder="규격">
         <input class="inp num" type="number" value="${esc(t.prev)}" data-set="equipment.${i}.prev" data-num="1" data-row="equipment.${i}" placeholder="전일">
         <input class="inp num" type="number" value="${esc(t.today)}" data-set="equipment.${i}.today" data-num="1" data-row="equipment.${i}" placeholder="금일">
         <span class="tot" data-total="equipment.${i}">누계 ${rowTotal(t)}</span>
@@ -439,7 +439,7 @@ function equipmentBody(s) {
 function materialsBody(s) {
   if (editing) {
     return editHead(["자재명", "규격", "단위", "전일", "금일", "누계"], "edit-head-materials") + s.materials.map((t, i) => `
-      <div class="edit-row">
+      <div class="edit-row edit-row-m">
         ${moveBtns("materials", i, s.materials.length)}
         <input class="inp material-name" value="${esc(t.name)}" data-set="materials.${i}.name" placeholder="자재명">
         <input class="inp material-spec" value="${esc(t.spec)}" data-set="materials.${i}.spec" placeholder="규격">
