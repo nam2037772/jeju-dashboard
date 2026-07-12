@@ -5,6 +5,9 @@ import {
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  getStorage, ref as storageRef, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { firebaseConfig, EDIT_EMAIL, DOC_PATH } from "./firebase-config.js";
 
 // ===================== 기본 데이터 (Firestore 문서가 없을 때 표시/초기값) =====================
@@ -63,11 +66,12 @@ const DEFAULT_STATE = {
 
 // ===================== Firebase 초기화 =====================
 const configured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
-let db, auth, DOC;
+let db, auth, storage, DOC;
 if (configured) {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   auth = getAuth(app);
+  storage = getStorage(app);
   DOC = doc(db, DOC_PATH[0], DOC_PATH[1]);
 }
 
@@ -270,6 +274,10 @@ function card(col, accent, title, count, body) {
   </section>`;
 }
 
+function editHead(labels, cls = "") {
+  return `<div class="edit-list-head ${cls}">${labels.map((label) => `<span>${label}</span>`).join("")}</div>`;
+}
+
 // -------- 작업 --------
 function tasksBody(s) {
   if (editing) {
@@ -277,6 +285,7 @@ function tasksBody(s) {
         <span style="font-size:12px;color:var(--text-sub);white-space:nowrap">작업일자</span>
         <input class="inp" type="date" value="${esc(s.workDate)}" data-set="workDate">
       </div>`
+      + editHead(["작업 내용", "공종"], "edit-head-tasks")
       + s.tasks.map((t, i) => `
       <div class="edit-row">
         ${moveBtns("tasks", i, s.tasks.length)}
@@ -297,7 +306,7 @@ function tasksBody(s) {
 // -------- 안전 --------
 function safetyBody(s) {
   if (editing) {
-    return s.safety.map((t, i) => `
+    return editHead(["안전 점검 항목"], "edit-head-safety") + s.safety.map((t, i) => `
       <div class="edit-row">
         <input class="inp" value="${esc(t.label)}" data-set="safety.${i}.label">
         <button class="icon-btn" data-del="safety.${i}">×</button>
@@ -314,7 +323,7 @@ function safetyBody(s) {
 // -------- 마감일 --------
 function deadlinesBody(s) {
   if (editing) {
-    return s.deadlines.map((t, i) => `
+    return editHead(["제목", "기관", "담당", "마감일"], "edit-head-deadlines") + s.deadlines.map((t, i) => `
       <div class="edit-row" style="flex-wrap:wrap">
         <input class="inp" style="flex:1 1 100%" value="${esc(t.title)}" data-set="deadlines.${i}.title" placeholder="제목">
         <input class="inp" value="${esc(t.org)}" data-set="deadlines.${i}.org" placeholder="기관">
@@ -339,7 +348,7 @@ function deadlinesBody(s) {
 // -------- 인력 (공종 / 전일·금일·누계) --------
 function personnelBody(s) {
   if (editing) {
-    return s.personnel.map((t, i) => `
+    return editHead(["공종", "전일", "금일", "누계"], "edit-head-personnel") + s.personnel.map((t, i) => `
       <div class="edit-row">
         ${moveBtns("personnel", i, s.personnel.length)}
         <input class="inp" style="flex:1;min-width:70px" value="${esc(t.trade)}" data-set="personnel.${i}.trade" placeholder="공종">
@@ -359,7 +368,7 @@ function personnelBody(s) {
 // -------- 장비 (장비명·규격 / 전일·금일·누계) --------
 function equipmentBody(s) {
   if (editing) {
-    return s.equipment.map((t, i) => `
+    return editHead(["장비명", "규격", "전일", "금일", "누계"], "edit-head-equipment") + s.equipment.map((t, i) => `
       <div class="edit-row">
         ${moveBtns("equipment", i, s.equipment.length)}
         <input class="inp" style="flex:1;min-width:70px" value="${esc(t.name)}" data-set="equipment.${i}.name" placeholder="장비명">
@@ -380,12 +389,12 @@ function equipmentBody(s) {
 // -------- 자재 (자재명·규격·단위 / 전일·금일·누계) --------
 function materialsBody(s) {
   if (editing) {
-    return s.materials.map((t, i) => `
+    return editHead(["자재명", "규격", "단위", "전일", "금일", "누계"], "edit-head-materials") + s.materials.map((t, i) => `
       <div class="edit-row">
         ${moveBtns("materials", i, s.materials.length)}
-        <input class="inp" style="flex:1;min-width:80px" value="${esc(t.name)}" data-set="materials.${i}.name" placeholder="자재명">
-        <input class="inp" style="width:96px" value="${esc(t.spec)}" data-set="materials.${i}.spec" placeholder="규격">
-        <input class="inp" style="width:56px" value="${esc(t.unit)}" data-set="materials.${i}.unit" placeholder="단위">
+        <input class="inp material-name" value="${esc(t.name)}" data-set="materials.${i}.name" placeholder="자재명">
+        <input class="inp material-spec" value="${esc(t.spec)}" data-set="materials.${i}.spec" placeholder="규격">
+        <input class="inp material-unit" value="${esc(t.unit)}" data-set="materials.${i}.unit" placeholder="단위">
         <input class="inp num" type="number" value="${esc(t.prev)}" data-set="materials.${i}.prev" data-num="1" data-row="materials.${i}" placeholder="전일">
         <input class="inp num" type="number" value="${esc(t.today)}" data-set="materials.${i}.today" data-num="1" data-row="materials.${i}" placeholder="금일">
         <span class="tot" data-total="materials.${i}">누계 ${rowTotal(t)}</span>
@@ -402,8 +411,14 @@ function materialsBody(s) {
 // -------- 사진 --------
 function photosBody(s) {
   if (editing) {
-    return s.photos.map((t, i) => `
-      <div class="edit-row" style="flex-wrap:wrap">
+    return editHead(["사진", "캡션", "촬영일", "태그"], "edit-head-photos") + s.photos.map((t, i) => `
+      <div class="edit-row photo-edit-row">
+        <div class="photo-edit-preview" style="background:${t.img ? `url('${esc(t.img)}') center/cover` : (esc(t.grad) || "linear-gradient(135deg,#1C93BE,#57C7E8)")}"></div>
+        <label class="photo-upload-btn">
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-photo-file="${i}">
+          ${t.img ? "사진 변경" : "사진 첨부"}
+        </label>
+        <span class="photo-upload-status" data-photo-status="${i}">${t.img ? "첨부됨" : "사진을 선택하세요"}</span>
         <input class="inp" style="flex:1 1 100%" value="${esc(t.caption)}" data-set="photos.${i}.caption" placeholder="캡션">
         <input class="inp" type="date" value="${esc(t.date)}" data-set="photos.${i}.date">
         <input class="inp inp-sm" style="width:90px" value="${esc(t.tag)}" data-set="photos.${i}.tag" placeholder="태그">
@@ -526,6 +541,10 @@ function bindEvents() {
     };
   });
 
+  document.querySelectorAll("[data-photo-file]").forEach(el => {
+    el.onchange = () => uploadPhoto(el);
+  });
+
   document.querySelectorAll("[data-del]").forEach(el => {
     el.onclick = () => { removeAt(draft, el.getAttribute("data-del")); render(); };
   });
@@ -535,6 +554,36 @@ function bindEvents() {
   document.querySelectorAll("[data-move]").forEach(el => {
     el.onclick = () => { moveRow(draft, el.getAttribute("data-move"), +el.getAttribute("data-dir")); render(); };
   });
+}
+
+async function uploadPhoto(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const index = +input.getAttribute("data-photo-file");
+  const status = document.querySelector(`[data-photo-status="${index}"]`);
+  const maxSize = 15 * 1024 * 1024;
+  if (file.size > maxSize) {
+    alert("사진은 한 장당 15MB 이하만 첨부할 수 있습니다.");
+    input.value = "";
+    return;
+  }
+  if (status) status.textContent = "업로드 중…";
+  input.disabled = true;
+  try {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const target = storageRef(storage, `site-photos/${Date.now()}-${uid()}-${safeName}`);
+    const result = await uploadBytes(target, file, { contentType: file.type || "application/octet-stream" });
+    const url = await getDownloadURL(result.ref);
+    if (!editing || !draft.photos[index]) return;
+    draft.photos[index].img = url;
+    if (!draft.photos[index].date) draft.photos[index].date = todayStr();
+    render();
+  } catch (e) {
+    console.error(e);
+    if (status) status.textContent = "업로드 실패";
+    input.disabled = false;
+    alert("사진 업로드에 실패했습니다: " + e.message + "\nFirebase Storage 규칙과 로그인 권한을 확인하세요.");
+  }
 }
 
 function startEdit() {
