@@ -261,10 +261,10 @@ function headerControls() {
     </div>`;
   }
   if (viewingDate) {
-    // 과거 이력 열람 중: 날짜 선택만 (편집/로그아웃 숨김)
-    return historySelect();
+    // 과거 이력 열람 중: 날짜 이동만 (편집/로그아웃 숨김)
+    return dayNav();
   }
-  return `${historySelect()}
+  return `${dayNav()}
     <div class="mode-toggle">
       <button class="active">열람</button>
       <button id="editBtn">편집</button>
@@ -273,12 +273,46 @@ function headerControls() {
 }
 
 function historySelect() {
-  const dates = (liveState.historyDates || []).slice().sort().reverse();
+  // 오늘(현재)은 별도 항목으로 있으므로 과거 날짜만 나열(중복 방지)
+  const dates = (liveState.historyDates || []).filter((d) => d !== liveState.workDate).slice().sort().reverse();
   if (!dates.length && !viewingDate) return "";
-  const opts = [`<option value="">현재</option>`]
+  const opts = [`<option value="">오늘(현재)</option>`]
     .concat(dates.map((d) => `<option value="${esc(d)}" ${d === viewingDate ? "selected" : ""}>${esc(d)}</option>`))
     .join("");
   return `<select class="history-select" id="historySelect" title="지난 일자 이력 보기">${opts}</select>`;
+}
+
+// 이력 날짜(오름차순)
+function historyDatesAsc() {
+  return (liveState.historyDates || []).slice().sort();
+}
+// 현재 열람 중인 날짜(현재 화면이면 오늘의 작업일자)
+function currentViewDate() {
+  return viewingDate || liveState.workDate || todayStr();
+}
+// 지금보다 하루 이전(가장 가까운 과거) 이력 날짜
+function prevHistoryDate() {
+  const cur = currentViewDate();
+  const older = historyDatesAsc().filter((d) => d < cur);
+  return older.length ? older[older.length - 1] : null;
+}
+// 지금보다 하루 뒤(가장 가까운 미래) 이력 날짜 (현재 화면이면 없음)
+function nextHistoryDate() {
+  if (!viewingDate) return null;
+  const newer = historyDatesAsc().filter((d) => d > viewingDate);
+  return newer.length ? newer[0] : null;
+}
+
+// 전일 ◀ / 익일 ▶ 하루 단위 이동 + 날짜 선택
+function dayNav() {
+  const prev = prevHistoryDate();
+  const next = viewingDate ? nextHistoryDate() : null;
+  if (!prev && !next && !viewingDate) return "";   // 오갈 지난 기록이 없으면 숨김
+  return `<div class="day-nav">
+    <button class="day-btn" id="prevDay" ${prev ? "" : "disabled"} title="전일 작업 보기">◀ 전일</button>
+    ${historySelect()}
+    <button class="day-btn" id="nextDay" ${next ? "" : "disabled"} title="다음 날 작업 보기">익일 ▶</button>
+  </div>`;
 }
 
 function card(col, accent, title, count, body) {
@@ -483,6 +517,16 @@ function bindEvents() {
   if (historySelect) historySelect.onchange = () => openHistory(historySelect.value);
   const backToNow = document.getElementById("backToNow");
   if (backToNow) backToNow.onclick = () => openHistory("");
+
+  const prevDay = document.getElementById("prevDay");
+  if (prevDay) prevDay.onclick = () => { const d = prevHistoryDate(); if (d) openHistory(d); };
+  const nextDay = document.getElementById("nextDay");
+  if (nextDay) nextDay.onclick = () => {
+    const d = nextHistoryDate();
+    if (!d) return;
+    const newest = historyDatesAsc().slice(-1)[0];
+    openHistory(d === newest ? "" : d);   // 가장 최신 날짜면 '오늘(현재)'로 복귀
+  };
 
   const editBtn = document.getElementById("editBtn");
   if (editBtn) editBtn.onclick = () => {
