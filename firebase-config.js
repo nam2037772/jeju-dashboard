@@ -11,17 +11,17 @@
 // 아래 값이 비어 있으면 화면에 설정 안내가 표시됩니다.
 
 export const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyCq6fvTI05bRmx_sXHROrOjO5ffXL_u8Ps",
+  authDomain: "jeju-dashboard-2dc1c.firebaseapp.com",
+  projectId: "jeju-dashboard-2dc1c",
+  storageBucket: "jeju-dashboard-2dc1c.firebasestorage.app",
+  messagingSenderId: "386804555783",
+  appId: "1:386804555783:web:851bff30ec0b75b5724aa2"
 };
 
 // 시공사 입력(편집) 전용 계정의 이메일. Authentication에 이 주소로 계정을 만들어 두세요.
 // 시공사는 '편집' 버튼을 누른 뒤 비밀번호만 입력하면 됩니다.
-export const EDIT_EMAIL = "sitemanager@jeju-dashboard.app";
+export const EDIT_EMAIL = "nam2037772@gmail.com";
 
 // Firestore 문서 경로 (그대로 두면 됩니다)
 export const DOC_PATH = ["dashboard", "main"];
