@@ -1,10 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, onSnapshot, writeBatch, serverTimestamp
+  getFirestore, doc, getDoc, onSnapshot, runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  getStorage, ref as storageRef, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { firebaseConfig, EDIT_EMAIL, DOC_PATH } from "./firebase-config.js";
 
 // ===================== 기본 데이터 (Firestore 문서가 없을 때 표시/초기값) =====================
@@ -62,11 +65,12 @@ const DEFAULT_STATE = {
 
 // ===================== Firebase 초기화 =====================
 const configured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
-let db, auth, DOC;
+let db, auth, storage, DOC;
 if (configured) {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   auth = getAuth(app);
+  storage = getStorage(app);
   DOC = doc(db, DOC_PATH[0], DOC_PATH[1]);
 }
 
@@ -79,6 +83,7 @@ let loginModal = false;
 let rolledOver = false;          // 편집 시작 시 전일 이월이 일어났는지
 let viewingDate = null;          // 열람 중인 과거 이력 날짜(null=현재)
 let historyState = null;         // 불러온 과거 이력 스냅샷
+let editBaseUpdatedAt = null;    // 편집 시작 시점의 updatedAt(충돌 감지용)
 
 const $app = document.getElementById("app");
 
@@ -111,18 +116,22 @@ function esc(s) {
 function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
 function uid() { return "x" + Math.random().toString(36).slice(2, 8); }
 
-// 오늘 날짜 "YYYY-MM-DD"
+// KST(Asia/Seoul) 기준 오늘 날짜 "YYYY-MM-DD"
+const KST = "Asia/Seoul";
 function todayStr() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  // en-CA 로케일은 항상 YYYY-MM-DD 형식으로 출력
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: KST, year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(new Date());
 }
-const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 function fmtDate(s) {
   if (!s) return "-";
-  const d = new Date(s + "T00:00:00");
+  // 날짜 문자열을 KST 자정 시점으로 고정해 요일을 계산
+  const d = new Date(s + "T00:00:00+09:00");
   if (isNaN(d)) return s;
-  return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()} (${WEEK[d.getDay()]})`;
+  const [y, m, day] = s.split("-").map(Number);
+  const wd = new Intl.DateTimeFormat("ko-KR", { timeZone: KST, weekday: "short" }).format(d);
+  return `${y}. ${m}. ${day} (${wd})`;
 }
 // 누계 = 전일 + 금일
 function rowTotal(r) { return (+r.prev || 0) + (+r.today || 0); }
@@ -164,8 +173,9 @@ function moveBtns(key, i, len) {
 
 function ddayInfo(due) {
   if (!due) return { label: "-", cls: "" };
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const d = new Date(due + "T00:00:00");
+  // KST 자정 기준으로 오늘과 마감일 차이 계산
+  const today = new Date(todayStr() + "T00:00:00+09:00");
+  const d = new Date(due + "T00:00:00+09:00");
   const diff = Math.round((d - today) / 86400000);
   if (isNaN(diff)) return { label: "-", cls: "" };
   let label = diff === 0 ? "D-DAY" : diff > 0 ? "D-" + diff : "D+" + Math.abs(diff);
@@ -245,7 +255,7 @@ function fmtUpdated(ts) {
   if (!ts) return "—";
   try {
     const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleString("ko-KR", { timeZone: KST, month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
   } catch { return "—"; }
 }
 
@@ -595,13 +605,14 @@ async function uploadPhoto(input) {
   input.disabled = true;
   try {
     const photoBlob = await optimizePhoto(file);
-    const url = await blobToDataUrl(photoBlob);
     if (!editing || !draft.photos[index]) return;
-    const otherBytes = draft.photos.reduce((sum, photo, photoIndex) =>
-      sum + (photoIndex !== index && String(photo.img || "").startsWith("data:") ? photo.img.length : 0), 0);
-    if (otherBytes + url.length > 800 * 1024) {
-      throw new Error("첨부 사진의 전체 용량이 큽니다. 기존 사진을 일부 삭제한 뒤 다시 첨부하세요.");
-    }
+    if (status) status.textContent = "업로드 중…";
+    // Firebase Storage에 파일로 업로드하고 다운로드 URL만 문서에 저장
+    const path = `photos/${todayStr()}/${Date.now()}-${uid()}.jpg`;
+    const fileRef = storageRef(storage, path);
+    await uploadBytes(fileRef, photoBlob, { contentType: "image/jpeg" });
+    const url = await getDownloadURL(fileRef);
+    if (!editing || !draft.photos[index]) return;
     draft.photos[index].img = url;
     if (!draft.photos[index].date) draft.photos[index].date = todayStr();
     render();
@@ -609,14 +620,19 @@ async function uploadPhoto(input) {
     console.error(e);
     if (status) status.textContent = "업로드 실패";
     input.disabled = false;
-    alert("사진 첨부에 실패했습니다: " + e.message);
+    const msg = (e && e.code === "storage/unauthorized")
+      ? "업로드 권한이 없습니다. Firebase Storage 규칙과 로그인 상태를 확인하세요(README 참고)."
+      : (e && e.code === "storage/unknown")
+        ? "Storage가 아직 설정되지 않았습니다. Firebase 콘솔에서 Storage를 시작하세요(README 참고)."
+        : e.message;
+    alert("사진 첨부에 실패했습니다: " + msg);
   }
 }
 
 async function optimizePhoto(file) {
   try {
     const bitmap = await createImageBitmap(file);
-    const maxSide = 1280;
+    const maxSide = 1600;
     const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
     let width = Math.max(1, Math.round(bitmap.width * scale));
     let height = Math.max(1, Math.round(bitmap.height * scale));
@@ -629,9 +645,9 @@ async function optimizePhoto(file) {
       ctx.fillStyle = "#fff";
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(bitmap, 0, 0, width, height);
-      const quality = Math.max(0.48, 0.76 - attempt * 0.07);
+      const quality = Math.max(0.5, 0.82 - attempt * 0.07);
       blob = await canvasToBlob(canvas, quality);
-      if (blob.size <= 170 * 1024) break;
+      if (blob.size <= 500 * 1024) break;
       width = Math.max(480, Math.round(width * 0.82));
       height = Math.max(360, Math.round(height * 0.82));
     }
@@ -648,18 +664,11 @@ function canvasToBlob(canvas, quality) {
     canvas.toBlob((value) => value ? resolve(value) : reject(new Error("사진 압축 실패")), "image/jpeg", quality));
 }
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("사진을 읽지 못했습니다."));
-    reader.readAsDataURL(blob);
-  });
-}
 
 function startEdit() {
   editing = true;
   draft = deepCopy(liveState);
+  editBaseUpdatedAt = liveState.updatedAt || null;   // 편집 시작 시점 기준(충돌 감지)
   rolledOver = false;
   const t = todayStr();
   if (draft.workDate && draft.workDate < t) {
@@ -716,23 +725,37 @@ async function saveDraft() {
   await persist(next);
 }
 
+function tsMillis(ts) { return (ts && ts.toMillis) ? ts.toMillis() : null; }
+
 async function persist(obj) {
-  obj.updatedAt = serverTimestamp();
   // 이력 날짜 목록에 작업일자를 추가(중복 제거·정렬)
   const dates = new Set(obj.historyDates || []);
   if (obj.workDate) dates.add(obj.workDate);
   obj.historyDates = [...dates].sort();
   try {
-    const batch = writeBatch(db);
-    batch.set(DOC, obj);   // 현재 화면(dashboard/main) — 전체 덮어쓰기
-    if (obj.workDate) {
-      // 그날 기록을 날짜별 문서(dashboard/history-YYYY-MM-DD)로 보관
-      const snapshot = { ...obj };
-      delete snapshot.historyDates;   // 이력 문서에는 목록이 필요 없음
-      batch.set(doc(db, DOC_PATH[0], "history-" + obj.workDate), snapshot);
-    }
-    await batch.commit();
+    await runTransaction(db, async (tx) => {
+      // 편집 시작 이후 다른 사람이 저장했는지 확인(충돌 감지)
+      const cur = await tx.get(DOC);
+      const curMs = cur.exists() ? tsMillis(cur.data().updatedAt) : null;
+      const baseMs = tsMillis(editBaseUpdatedAt);
+      if (curMs !== baseMs) throw new Error("CONFLICT");
+
+      obj.updatedAt = serverTimestamp();
+      tx.set(DOC, obj);   // 현재 화면(dashboard/main) — 전체 덮어쓰기
+      if (obj.workDate) {
+        // 그날 기록을 날짜별 문서(dashboard/history-YYYY-MM-DD)로 보관
+        const snapshot = { ...obj };
+        delete snapshot.historyDates;   // 이력 문서에는 목록이 필요 없음
+        tx.set(doc(db, DOC_PATH[0], "history-" + obj.workDate), snapshot);
+      }
+    });
   } catch (e) {
+    if (e.message === "CONFLICT") {
+      editing = false; draft = null;
+      alert("다른 기기나 사용자가 먼저 저장했습니다.\n최신 내용으로 화면을 새로고침했으니, 확인 후 다시 편집해 주세요.");
+      render();
+      return;
+    }
     alert("저장에 실패했습니다: " + e.message + "\n(로그인/권한/네트워크를 확인하세요.)");
   }
   render();
