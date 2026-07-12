@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
-  getFirestore, doc, onSnapshot, setDoc, serverTimestamp
+  getFirestore, doc, getDoc, onSnapshot, writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
@@ -56,10 +56,7 @@ const DEFAULT_STATE = {
     { caption: "외부 비계 설치", date: "2026-07-09", tag: "안전", grad: "linear-gradient(135deg,#C05A2C,#E0895C)" },
     { caption: "자재 반입 검수", date: "2026-07-08", tag: "자재", grad: "linear-gradient(135deg,#4C7A34,#7CA860)" },
   ],
-  notifications: [
-    { text: "감리단이 슬래브 검측 일정을 확인했습니다.", time: "오늘 09:12" },
-    { text: "레미콘 타설 예약이 필요합니다.", time: "어제 16:40" },
-  ],
+  historyDates: [],   // 저장된 일자별 이력 목록 "YYYY-MM-DD"
   updatedAt: null,
 };
 
@@ -78,9 +75,10 @@ let liveState = DEFAULT_STATE;   // Firestore에서 온 최신 데이터
 let draft = null;                // 편집 중인 복사본
 let editing = false;             // 편집 모드 여부
 let isAuthed = false;            // 시공사 로그인 여부
-let notifOpen = false;
 let loginModal = false;
 let rolledOver = false;          // 편집 시작 시 전일 이월이 일어났는지
+let viewingDate = null;          // 열람 중인 과거 이력 날짜(null=현재)
+let historyState = null;         // 불러온 과거 이력 스냅샷
 
 const $app = document.getElementById("app");
 
@@ -98,7 +96,7 @@ function boot() {
   });
   onSnapshot(DOC, (snap) => {
     liveState = normalizeRows(snap.exists() ? { ...DEFAULT_STATE, ...snap.data() } : { ...DEFAULT_STATE });
-    if (!editing) render();
+    if (!editing && !viewingDate) render();
   }, (err) => {
     console.error(err);
     $app.innerHTML = `<div class="config-warn">데이터를 불러오지 못했습니다: ${esc(err.message)}<br>Firestore 규칙과 설정을 확인하세요 (README 참고).</div>`;
@@ -175,7 +173,11 @@ function ddayInfo(due) {
   return { label, cls };
 }
 
-function data() { return editing ? draft : liveState; }
+function data() {
+  if (editing) return draft;
+  if (viewingDate && historyState) return historyState;
+  return liveState;
+}
 
 // ===================== 렌더 =====================
 function render() {
@@ -201,7 +203,6 @@ function render() {
           </div>
         </div>
         <div class="header-right">
-          <div class="bell" id="bell">🔔${s.notifications.length ? '<span class="dot"></span>' : ""}</div>
           ${headerControls()}
         </div>
       </div>
@@ -209,6 +210,7 @@ function render() {
 
     <div class="wrap">
       ${editing ? `<div style="margin-top:16px" class="editing-note">✏️ 편집 모드 — 수정 후 <b>저장</b>을 눌러야 모두에게 반영됩니다.${rolledOver ? ` <span style="color:var(--blue)">· 날짜가 바뀌어 어제 '금일'을 '전일 누계'로 자동 이월했습니다.</span>` : ""}</div>` : ""}
+      ${(!editing && viewingDate) ? `<div style="margin-top:16px" class="history-note">📅 <b>${fmtDate(viewingDate)}</b> 이력을 열람 중입니다. (읽기 전용) <button class="btn btn-primary sm" id="backToNow">현재로 돌아가기</button></div>` : ""}
       <div class="grid">
 
         ${card("col-4", "var(--blue)", "오늘의 작업", fmtDate(s.workDate), tasksBody(s))}
@@ -229,11 +231,10 @@ function render() {
 
       </div>
       <div class="footer">
-        최종 갱신: ${fmtUpdated(liveState.updatedAt)} · 열람은 공개 / 입력은 시공사 전용
+        최종 갱신: ${fmtUpdated((viewingDate && historyState) ? historyState.updatedAt : liveState.updatedAt)} · 열람은 공개 / 입력은 시공사 전용
       </div>
     </div>
 
-    ${notifOpen ? notifPanel(s) : ""}
     ${loginModal ? loginModalHtml() : ""}
   `;
 
@@ -259,11 +260,25 @@ function headerControls() {
       <button class="btn btn-ghost" id="cancel">취소</button>
     </div>`;
   }
-  return `<div class="mode-toggle">
+  if (viewingDate) {
+    // 과거 이력 열람 중: 날짜 선택만 (편집/로그아웃 숨김)
+    return historySelect();
+  }
+  return `${historySelect()}
+    <div class="mode-toggle">
       <button class="active">열람</button>
       <button id="editBtn">편집</button>
     </div>
     ${isAuthed ? `<button class="btn btn-ghost" id="logout">로그아웃</button>` : ""}`;
+}
+
+function historySelect() {
+  const dates = (liveState.historyDates || []).slice().sort().reverse();
+  if (!dates.length && !viewingDate) return "";
+  const opts = [`<option value="">현재</option>`]
+    .concat(dates.map((d) => `<option value="${esc(d)}" ${d === viewingDate ? "selected" : ""}>${esc(d)}</option>`))
+    .join("");
+  return `<select class="history-select" id="historySelect" title="지난 일자 이력 보기">${opts}</select>`;
 }
 
 function card(col, accent, title, count, body) {
@@ -463,14 +478,6 @@ function editSpan(key, val, type) {
   return `<input class="inp" style="min-width:120px;display:inline-block;width:auto" value="${esc(val)}" data-set="${key}">`;
 }
 
-// -------- 알림 패널 --------
-function notifPanel(s) {
-  return `<div class="notif-panel">
-    <h4>알림</h4>
-    ${s.notifications.map(n => `<div class="notif-item">${esc(n.text)}<div class="t">${esc(n.time)}</div></div>`).join("") || `<div class="notif-item">새 알림이 없습니다.</div>`}
-  </div>`;
-}
-
 // -------- 로그인 모달 --------
 function loginModalHtml() {
   return `<div class="modal-back" id="modalBack">
@@ -500,8 +507,10 @@ function renderConfigWarning() {
 
 // ===================== 이벤트 =====================
 function bindEvents() {
-  const bell = document.getElementById("bell");
-  if (bell) bell.onclick = () => { notifOpen = !notifOpen; render(); };
+  const historySelect = document.getElementById("historySelect");
+  if (historySelect) historySelect.onchange = () => openHistory(historySelect.value);
+  const backToNow = document.getElementById("backToNow");
+  if (backToNow) backToNow.onclick = () => openHistory("");
 
   const editBtn = document.getElementById("editBtn");
   if (editBtn) editBtn.onclick = () => {
@@ -663,8 +672,28 @@ function startEdit() {
   } else if (!draft.workDate) {
     draft.workDate = t;
   }
-  notifOpen = false;
+  viewingDate = null;
+  historyState = null;
   render();
+}
+
+// 지난 일자 이력 열람 (dateId="" 이면 현재로 복귀)
+async function openHistory(dateId) {
+  if (!dateId) {
+    viewingDate = null;
+    historyState = null;
+    render();
+    return;
+  }
+  try {
+    const snap = await getDoc(doc(db, DOC_PATH[0], "history-" + dateId));
+    if (!snap.exists()) { alert("해당 일자의 이력을 찾을 수 없습니다."); return; }
+    historyState = normalizeRows({ ...DEFAULT_STATE, ...snap.data() });
+    viewingDate = dateId;
+    render();
+  } catch (e) {
+    alert("이력을 불러오지 못했습니다: " + e.message);
+  }
 }
 
 async function tryLogin() {
@@ -689,8 +718,20 @@ async function saveDraft() {
 
 async function persist(obj) {
   obj.updatedAt = serverTimestamp();
+  // 이력 날짜 목록에 작업일자를 추가(중복 제거·정렬)
+  const dates = new Set(obj.historyDates || []);
+  if (obj.workDate) dates.add(obj.workDate);
+  obj.historyDates = [...dates].sort();
   try {
-    await setDoc(DOC, obj, { merge: false });
+    const batch = writeBatch(db);
+    batch.set(DOC, obj);   // 현재 화면(dashboard/main) — 전체 덮어쓰기
+    if (obj.workDate) {
+      // 그날 기록을 날짜별 문서(dashboard/history-YYYY-MM-DD)로 보관
+      const snapshot = { ...obj };
+      delete snapshot.historyDates;   // 이력 문서에는 목록이 필요 없음
+      batch.set(doc(db, DOC_PATH[0], "history-" + obj.workDate), snapshot);
+    }
+    await batch.commit();
   } catch (e) {
     alert("저장에 실패했습니다: " + e.message + "\n(로그인/권한/네트워크를 확인하세요.)");
   }

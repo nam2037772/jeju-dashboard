@@ -69,10 +69,14 @@ body {
 .progress-fill { height: 100%; border-radius: 20px; background: linear-gradient(90deg, var(--blue-lt), var(--blue)); }
 .progress-input { width: 86px; text-align: right; }
 
-/* 모드 토글 / 알림 */
-.header-right { display: flex; align-items: center; gap: 12px; }
-.bell { position: relative; cursor: pointer; font-size: 18px; }
-.bell .dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; background: var(--red-lt); border-radius: 50%; border: 2px solid var(--header-2); }
+/* 모드 토글 / 이력 선택 */
+.header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.history-select {
+  border: 0; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  background: rgba(255,255,255,0.14); color: #EAF3F7; border-radius: var(--radius-pill);
+  padding: 7px 12px; appearance: none;
+}
+.history-select option { color: #1a1a1a; }
 
 .mode-toggle { display: flex; background: rgba(255,255,255,0.14); border-radius: var(--radius-pill); padding: 3px; }
 .mode-toggle button {
@@ -231,12 +235,13 @@ body {
 /* 하단 갱신 정보 */
 .footer { margin-top: 18px; text-align: center; font-size: 12px; color: var(--text-mute); }
 
-/* 알림 패널 */
-.notif-panel { position: fixed; top: 68px; right: 24px; width: 320px; background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 30px rgba(20,30,40,0.14); z-index: 40; overflow: hidden; }
-.notif-panel h4 { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
-.notif-item { padding: 11px 14px; border-bottom: 1px solid #F0F2F4; font-size: 13px; }
-.notif-item:last-child { border-bottom: 0; }
-.notif-item .t { font-size: 11px; color: var(--text-mute); margin-top: 2px; }
+/* 이력 열람 안내 배너 */
+.history-note {
+  font-size: 13px; color: var(--header-2); font-weight: 600;
+  background: #EAF4F8; border: 1px solid #CDE6EF; border-radius: 10px;
+  padding: 10px 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.btn.sm { padding: 5px 12px; font-size: 12px; }
 
 /* 로그인 모달 */
 .modal-back { position: fixed; inset: 0; background: rgba(11,30,40,0.5); display: flex; align-items: center; justify-content: center; z-index: 50; }
