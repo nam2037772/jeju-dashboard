@@ -92,24 +92,9 @@ gh repo create jeju-dashboard --public --source=. --remote=origin --push
 
 ## 실제 데이터로 바꾸기
 편집 모드에서 화면상 각 항목의 `+ 추가` / `×` 버튼과 입력칸으로 직접 수정합니다.
-현장 사진은 편집 모드에서 **사진 첨부** 버튼으로 JPEG, PNG, WebP, HEIC 파일을 업로드할 수 있습니다(장당 15MB 이하).
-업로드 파일은 Firebase Storage의 `site-photos/` 폴더에 저장되고 공개 화면에는 실제 사진으로 표시됩니다.
-
-Firebase Console의 **Storage → Rules**에는 로그인한 편집자만 업로드하고 누구나 사진을 볼 수 있도록 다음 규칙을 설정합니다.
-
-```text
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /site-photos/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null
-                   && request.resource.size < 15 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
-    }
-  }
-}
-```
+현장 사진은 편집 모드에서 **사진 첨부** 버튼으로 선택합니다(원본 장당 15MB 이하).
+브라우저가 사진을 대시보드용 크기로 자동 압축하고, **저장** 버튼을 누르면 다른 현황 데이터와 함께 Firestore에 저장됩니다.
+별도의 Firebase Storage 설정은 필요하지 않습니다. Firestore 문서 용량을 안전하게 지키기 위해 첨부 사진 전체는 약 800KB로 제한됩니다.
 
 ## 디자인 토큰
 - 배경 `#F3F5F6`, 카드 `#fff`, 테두리 `#E4E7EA`
