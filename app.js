@@ -13,6 +13,7 @@ const DEFAULT_STATE = {
   siteInfo: "제주특별자치도 · 현장현황판",
   weather: "맑음 24°C",
   progress: 0.42,
+  specialNotes: "",
   tasks: [
     { id: "t1", title: "2층 슬래브 배근 검측 준비", trade: "골조", done: false },
     { id: "t2", title: "지하 전기 배관 매립", trade: "전기", done: true },
@@ -194,10 +195,10 @@ function render() {
             <div class="meta-value">${editSpan("weather", s.weather, "text")}</div>
           </div>
           <div class="progress-wrap">
-            <div class="progress-top"><span>공정률</span><span>${Math.round(s.progress * 100)}%</span></div>
-            <div class="progress-bar"><div class="progress-fill" style="width:${Math.round(s.progress * 100)}%"></div></div>
-            ${editing ? `<input class="inp inp-sm" style="margin-top:6px" type="number" min="0" max="100"
-                 value="${Math.round(s.progress * 100)}" data-set="progress" data-pct="1"> %` : ""}
+            <div class="progress-top"><span>공정률</span><span class="progress-value">${editing ? (s.progress * 100).toFixed(2) : formatPercent(s.progress * 100)}%</span></div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${s.progress * 100}%"></div></div>
+            ${editing ? `<input class="inp progress-input" style="margin-top:6px" type="number" min="0" max="100" step="0.01"
+                 value="${(s.progress * 100).toFixed(2)}" data-set="progress" data-pct="1"> %` : ""}
           </div>
         </div>
         <div class="header-right">
@@ -221,7 +222,9 @@ function render() {
 
         ${card("col-6", "var(--purple)", "장비 현황", `${s.equipment.length}종`, equipmentBody(s))}
 
-        ${card("col-12", "var(--green)", "주요 자재", `${s.materials.length}품목`, materialsBody(s))}
+        ${card("col-6", "var(--green)", "주요 자재", `${s.materials.length}품목`, materialsBody(s))}
+
+        ${card("col-6", "var(--orange)", "특기사항", s.specialNotes ? "작성됨" : "없음", specialNotesBody(s))}
 
         ${card("col-12", "var(--blue-lt)", "현장 사진", `${s.photos.length}건`, photosBody(s))}
 
@@ -244,6 +247,10 @@ function fmtUpdated(ts) {
     const d = ts.toDate ? ts.toDate() : new Date(ts);
     return d.toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
   } catch { return "—"; }
+}
+
+function formatPercent(value) {
+  return Number(value || 0).toLocaleString("ko-KR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 function headerControls() {
@@ -391,17 +398,31 @@ function materialsBody(s) {
         <input class="inp material-name" value="${esc(t.name)}" data-set="materials.${i}.name" placeholder="자재명">
         <input class="inp material-spec" value="${esc(t.spec)}" data-set="materials.${i}.spec" placeholder="규격">
         <input class="inp material-unit" value="${esc(t.unit)}" data-set="materials.${i}.unit" placeholder="단위">
-        <input class="inp num" type="number" value="${esc(t.prev)}" data-set="materials.${i}.prev" data-num="1" data-row="materials.${i}" placeholder="전일">
-        <input class="inp num" type="number" value="${esc(t.today)}" data-set="materials.${i}.today" data-num="1" data-row="materials.${i}" placeholder="금일">
-        <span class="tot" data-total="materials.${i}">누계 ${rowTotal(t)}</span>
+        <input class="inp num" type="text" inputmode="decimal" value="${formatNumber(t.prev)}" data-set="materials.${i}.prev" data-num="1" data-comma="1" data-row="materials.${i}" placeholder="전일">
+        <input class="inp num" type="text" inputmode="decimal" value="${formatNumber(t.today)}" data-set="materials.${i}.today" data-num="1" data-comma="1" data-row="materials.${i}" placeholder="금일">
+        <span class="tot" data-total="materials.${i}">누계 ${formatNumber(rowTotal(t))}</span>
         <button class="icon-btn" data-del="materials.${i}">×</button>
       </div>`).join("")
       + `<button class="add-btn" data-add="materials">+ 자재 추가</button>`;
   }
   return `<div class="dt dt-m">
     <div class="dt-head"><span>자재명</span><span>규격</span><span>단위</span><span>전일</span><span>금일</span><span>누계</span></div>
-    ${s.materials.map((t) => `<div class="dt-row"><span class="nm">${esc(t.name)}</span><span class="spec">${esc(t.spec)}</span><span class="spec">${esc(t.unit)}</span><span>${esc(t.prev)}</span><span class="td">${esc(t.today)}</span><span class="tt">${rowTotal(t)}</span></div>`).join("") || emptyRow()}
+    ${s.materials.map((t) => `<div class="dt-row"><span class="nm">${esc(t.name)}</span><span class="spec">${esc(t.spec)}</span><span class="spec">${esc(t.unit)}</span><span>${formatNumber(t.prev)}</span><span class="td">${formatNumber(t.today)}</span><span class="tt">${formatNumber(rowTotal(t))}</span></div>`).join("") || emptyRow()}
   </div>`;
+}
+
+function formatNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number.toLocaleString("ko-KR", { maximumFractionDigits: 2 }) : "0";
+}
+
+function specialNotesBody(s) {
+  if (editing) {
+    return `<textarea class="inp notes-input" data-set="specialNotes" placeholder="현장 특기사항을 입력하세요.">${esc(s.specialNotes)}</textarea>`;
+  }
+  return s.specialNotes
+    ? `<div class="notes-view">${esc(s.specialNotes)}</div>`
+    : `<div class="notes-empty">등록된 특기사항이 없습니다.</div>`;
 }
 
 // -------- 사진 --------
@@ -518,13 +539,15 @@ function bindEvents() {
   document.querySelectorAll("[data-set]").forEach(el => {
     el.oninput = () => {
       let v = el.value;
-      if (el.getAttribute("data-num")) v = +v || 0;
+      if (el.getAttribute("data-num")) v = +(v.replace ? v.replace(/,/g, "") : v) || 0;
       if (el.getAttribute("data-pct")) v = Math.min(100, Math.max(0, +v || 0)) / 100;
       setPath(draft, el.getAttribute("data-set"), v);
       // 진행률 바만 즉시 시각 갱신 (재렌더는 하지 않아 포커스 유지)
       if (el.getAttribute("data-pct")) {
         const fill = document.querySelector(".progress-fill");
         if (fill) fill.style.width = Math.round(v * 100) + "%";
+        const valueLabel = document.querySelector(".progress-value");
+        if (valueLabel) valueLabel.textContent = (v * 100).toFixed(2) + "%";
       }
       // 전일/금일 입력 시 해당 행의 누계를 즉시 갱신 (재렌더 없이 포커스 유지)
       const rowPath = el.getAttribute("data-row");
@@ -532,9 +555,14 @@ function bindEvents() {
         const parts = rowPath.split(".");
         const r = draft[parts[0]][+parts[1]];
         const totEl = document.querySelector(`[data-total="${rowPath}"]`);
-        if (totEl) totEl.textContent = "누계 " + rowTotal(r);
+        if (totEl) totEl.textContent = "누계 " + (el.getAttribute("data-comma") ? formatNumber(rowTotal(r)) : rowTotal(r));
       }
     };
+  });
+
+  document.querySelectorAll("[data-comma]").forEach(el => {
+    el.onfocus = () => { el.value = el.value.replace(/,/g, ""); };
+    el.onblur = () => { el.value = formatNumber(el.value.replace(/,/g, "")); };
   });
 
   document.querySelectorAll("[data-photo-file]").forEach(el => {
