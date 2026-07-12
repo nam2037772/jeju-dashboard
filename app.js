@@ -407,7 +407,7 @@ function materialsBody(s) {
 // -------- 사진 --------
 function photosBody(s) {
   if (editing) {
-    return editHead(["사진", "캡션", "촬영일", "태그"], "edit-head-photos") + s.photos.map((t, i) => `
+    return editHead(["사진", "내용", "촬영일", "태그"], "edit-head-photos") + s.photos.map((t, i) => `
       <div class="edit-row photo-edit-row">
         <div class="photo-edit-preview" style="background:${t.img ? `url('${esc(t.img)}') center/cover` : (esc(t.grad) || "linear-gradient(135deg,#1C93BE,#57C7E8)")}"></div>
         <label class="photo-upload-btn">
@@ -415,7 +415,7 @@ function photosBody(s) {
           ${t.img ? "사진 변경" : "사진 첨부"}
         </label>
         <span class="photo-upload-status" data-photo-status="${i}">${t.img ? "첨부됨" : "사진을 선택하세요"}</span>
-        <input class="inp" style="flex:1 1 100%" value="${esc(t.caption)}" data-set="photos.${i}.caption" placeholder="캡션">
+        <input class="inp" style="flex:1 1 100%" value="${esc(t.caption)}" data-set="photos.${i}.caption" placeholder="사진 내용">
         <input class="inp" type="date" value="${esc(t.date)}" data-set="photos.${i}.date">
         <input class="inp inp-sm" style="width:90px" value="${esc(t.tag)}" data-set="photos.${i}.tag" placeholder="태그">
         <button class="icon-btn" data-del="photos.${i}">×</button>
