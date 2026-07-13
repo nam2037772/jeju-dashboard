@@ -175,10 +175,29 @@ function ddayInfo(due) {
   return { label, cls };
 }
 
+// KST 기준 오늘 날짜가 저장된 작업일자보다 뒤면 오늘 날짜를 표시용으로 사용
+function displayWorkDate() {
+  const t = todayStr();
+  const wd = liveState.workDate || t;
+  return wd < t ? t : wd;
+}
+// 라이브 화면 표시용: 날이 바뀌었으면 '금일→전일 누계' 이월본을 만들어 오늘 날짜로 보여준다.
+// (저장은 하지 않고 화면 표시만 바꾼다. 편집·저장 시 동일한 이월이 실제로 적용된다.)
+function rollForwardForToday(st) {
+  const t = todayStr();
+  if (!st.workDate || st.workDate >= t) return st;
+  const copy = deepCopy(st);
+  ["personnel", "equipment", "materials"].forEach((k) => {
+    (copy[k] || []).forEach((r) => { r.prev = (+r.prev || 0) + (+r.today || 0); r.today = 0; });
+  });
+  copy.workDate = t;
+  return copy;
+}
+
 function data() {
   if (editing) return draft;
   if (viewingDate && historyState) return historyState;
-  return liveState;
+  return rollForwardForToday(liveState);
 }
 
 // ===================== 렌더 =====================
@@ -274,7 +293,7 @@ function headerControls() {
 
 function historySelect() {
   // 오늘(현재)은 별도 항목으로 있으므로 과거 날짜만 나열(중복 방지)
-  const dates = (liveState.historyDates || []).filter((d) => d !== liveState.workDate).slice().sort().reverse();
+  const dates = (liveState.historyDates || []).filter((d) => d !== displayWorkDate()).slice().sort().reverse();
   if (!dates.length && !viewingDate) return "";
   const opts = [`<option value="">오늘(현재)</option>`]
     .concat(dates.map((d) => `<option value="${esc(d)}" ${d === viewingDate ? "selected" : ""}>${esc(d)}</option>`))
@@ -288,7 +307,7 @@ function historyDatesAsc() {
 }
 // 현재 열람 중인 날짜(현재 화면이면 오늘의 작업일자)
 function currentViewDate() {
-  return viewingDate || liveState.workDate || todayStr();
+  return viewingDate || displayWorkDate();
 }
 // 지금보다 하루 이전(가장 가까운 과거) 이력 날짜
 function prevHistoryDate() {
