@@ -284,3 +284,31 @@ body {
   .edit-head-equipment { grid-template-columns: minmax(44px,1.1fr) minmax(38px,0.9fr) 38px 38px minmax(38px,auto); padding: 7px 26px 5px 26px; }
   .edit-head-materials { grid-template-columns: minmax(40px,1fr) minmax(38px,0.9fr) 30px 36px 36px minmax(36px,auto); padding: 7px 24px 5px 26px; }
 }
+
+/* ===== 인쇄 (🖨 버튼 → 브라우저 인쇄/PDF 저장) =====
+   화면에 보이는 현황을 A4 가로 한 장에 색상 그대로 담는다. */
+@media print {
+  /* 화면 색·배경을 인쇄물에도 그대로 (헤더 그라데이션·누계 색 유지) */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  @page { size: A4 landscape; margin: 10mm; }
+
+  body { background: #fff; font-size: 12px; }
+
+  /* 조작용 UI는 인쇄에서 제외 */
+  .no-print,
+  .mode-toggle, .save-bar, .day-nav, .history-select,
+  .history-note, .editing-note, .modal-back { display: none !important; }
+
+  /* 헤더는 그대로 인쇄하되 페이지 폭에 맞춤 */
+  .header { border-radius: 0; }
+  .header-inner, .wrap { max-width: none; }
+  .wrap { padding: 0; }
+  .grid { margin-top: 12px; gap: 10px; }
+
+  /* 카드가 페이지 경계에서 잘리지 않도록 */
+  .card { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+
+  /* 인쇄 시각 안내 문구(하단 갱신 정보)는 유지 */
+  .footer { margin-top: 10px; }
+}

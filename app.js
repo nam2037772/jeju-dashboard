@@ -280,15 +280,21 @@ function headerControls() {
     </div>`;
   }
   if (viewingDate) {
-    // 과거 이력 열람 중: 날짜 이동만 (편집/로그아웃 숨김)
-    return dayNav();
+    // 과거 이력 열람 중: 날짜 이동 + 인쇄만 (편집/로그아웃 숨김)
+    return `${dayNav()}${printBtn()}`;
   }
   return `${dayNav()}
     <div class="mode-toggle">
       <button class="active">열람</button>
       <button id="editBtn">편집</button>
     </div>
+    ${printBtn()}
     ${isAuthed ? `<button class="btn btn-ghost" id="logout">로그아웃</button>` : ""}`;
+}
+
+// 인쇄 버튼 (열람/이력 열람 화면에서만 표시, 편집 중에는 숨김)
+function printBtn() {
+  return `<button class="btn btn-ghost no-print" id="printBtn" title="현재 화면을 인쇄합니다">🖨 인쇄</button>`;
 }
 
 function historySelect() {
@@ -556,6 +562,9 @@ function bindEvents() {
 
   const logout = document.getElementById("logout");
   if (logout) logout.onclick = async () => { await signOut(auth); };
+
+  const printBtnEl = document.getElementById("printBtn");
+  if (printBtnEl) printBtnEl.onclick = () => window.print();
 
   const save = document.getElementById("save");
   if (save) save.onclick = saveDraft;
