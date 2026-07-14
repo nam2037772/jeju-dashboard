@@ -286,29 +286,64 @@ body {
 }
 
 /* ===== 인쇄 (🖨 버튼 → 브라우저 인쇄/PDF 저장) =====
-   화면에 보이는 현황을 A4 가로 한 장에 색상 그대로 담는다. */
+   화면의 하루치 현황을 A4 세로 '한 장'에 색상 그대로 압축해 담는다. */
 @media print {
   /* 화면 색·배경을 인쇄물에도 그대로 (헤더 그라데이션·누계 색 유지) */
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
-  @page { size: A4 landscape; margin: 10mm; }
+  @page { size: A4 portrait; margin: 7mm; }
 
-  body { background: #fff; font-size: 12px; }
+  body { background: #fff; font-size: 12px; line-height: 1.4; }
 
   /* 조작용 UI는 인쇄에서 제외 */
   .no-print,
   .mode-toggle, .save-bar, .day-nav, .history-select,
   .history-note, .editing-note, .modal-back { display: none !important; }
 
-  /* 헤더는 그대로 인쇄하되 페이지 폭에 맞춤 */
+  /* 헤더: 폭 꽉 채우고 높이 축소 */
   .header { border-radius: 0; }
   .header-inner, .wrap { max-width: none; }
+  .header-inner { padding: 12px 14px; gap: 14px; }
+  .header-title { font-size: 17px; }
+  .header-sub { font-size: 11px; margin-top: 2px; }
+  .meta-label { font-size: 10px; }
+  .meta-value { font-size: 14px; }
+  .progress-wrap { min-width: 180px; }
+  .progress-top { font-size: 10px; margin-bottom: 4px; }
+  .progress-bar { height: 6px; }
   .wrap { padding: 0; }
-  .grid { margin-top: 12px; gap: 10px; }
 
-  /* 카드가 페이지 경계에서 잘리지 않도록 */
-  .card { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+  /* 한 장에 담기 위한 촘촘한 3열/2열 배치 */
+  .grid { margin-top: 10px; gap: 8px; grid-template-columns: repeat(6, 1fr); }
+  .col-4 { grid-column: span 2; }   /* 오늘작업·안전·마감 → 한 줄에 3개 */
+  .col-6, .col-8, .col-12 { grid-column: span 3; }  /* 인력·장비·자재·명일 → 한 줄에 2개 */
 
-  /* 인쇄 시각 안내 문구(하단 갱신 정보)는 유지 */
-  .footer { margin-top: 10px; }
+  /* 카드: 여백 축소 + 페이지 경계에서 잘리지 않게 */
+  .card { box-shadow: none; padding: 11px 12px; border-radius: 10px;
+          break-inside: avoid; page-break-inside: avoid; }
+  .card-head { margin-bottom: 8px; }
+  .card-title { font-size: 14px; }
+  .card-count { font-size: 10px; }
+  .accent-dot { width: 8px; height: 8px; }
+
+  /* 행 높이·글자 (표/리스트 공통) */
+  .task, .safety, .deadline { padding: 5px 0; }
+  .task-title, .safety-label, .d-title { font-size: 13px; }
+  .d-sub { font-size: 10px; margin-top: 1px; }
+  .tag, .pill, .dday { font-size: 10px; padding: 2px 8px; }
+  .dt-head, .dt-row { padding: 5px 2px; font-size: 12px; gap: 4px; }
+  .dt-head { font-size: 10px; }
+  .dt-row .spec { font-size: 10px; }
+
+  /* 반 너비 카드에 맞춰 표 칸 폭을 좁혀 '누계' 칸까지 보이게 */
+  .dt-p .dt-head, .dt-p .dt-row { grid-template-columns: 1fr 42px 42px 48px; }
+  .dt-e .dt-head, .dt-e .dt-row { grid-template-columns: minmax(50px,1.3fr) 54px 40px 40px 46px; }
+  .dt-m .dt-head, .dt-m .dt-row { grid-template-columns: minmax(46px,1fr) minmax(46px,0.9fr) 34px 42px 42px 48px; }
+
+  /* 명일작업·특기사항: 큰 최소높이 제거해 공간 절약 */
+  .notes-view, .notes-empty, .notes-input { min-height: 0; font-size: 12px; line-height: 1.5; }
+  .notes-block + .notes-block { margin-top: 12px; padding-top: 12px; }
+  .notes-subhead { font-size: 11px; margin-bottom: 4px; }
+
+  .footer { margin-top: 8px; font-size: 10px; }
 }
